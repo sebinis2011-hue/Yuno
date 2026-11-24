@@ -58,4 +58,6 @@
     <string name="settings_chapters_open_line">Al elegir un capítulo, la lista sigue abierta para pasar de uno a otro</string>
     <string name="settings_auto_pip_title">Imagen en imagen al salir</string>
     <string name="settings_auto_pip_line">Si vas a la pantalla de inicio con un vídeo en marcha, sigue en una ventana pequeña</string>
+    <string name="settings_repeat_one_title">Repetir el vídeo actual</string>
+    <string name="settings_repeat_one_line">Reinicia automáticamente este vídeo al terminar, indefinidamente</string>
 </resources>
