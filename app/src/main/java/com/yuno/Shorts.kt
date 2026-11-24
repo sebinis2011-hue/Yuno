@@ -1318,14 +1318,48 @@ private fun ShortsRail(shorts: ShortsState, page: Int, enabled: Boolean, modifie
                 )
             }
         }
-        RailButton(enabled, "Dislike", onClick = shorts::toggleDislike) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                FlourishIcon(
-                    if (disliked) SfIcons.ThumbDownFill else SfIcons.ThumbDown,
-                    null, active = disliked, kind = Flourish.Droop, tint = Ink, size = 27.dp,
-                )
-                if (dislikeCount != null) {
-                    Text("~${formatShortCount(dislikeCount)}", color = Ink, fontSize = 10.sp, maxLines = 1)
+        key(item.id) {
+            val dislikeScale = remember { Animatable(1f) }
+            val dislikeTilt = remember { Animatable(0f) }
+            LaunchedEffect(disliked) {
+                if (disliked) {
+                    dislikeScale.snapTo(0.78f)
+                    dislikeTilt.snapTo(-12f)
+                    launch {
+                        dislikeScale.animateTo(1.16f, spring(dampingRatio = 0.42f, stiffness = 520f))
+                        dislikeScale.animateTo(1f, spring(dampingRatio = 0.58f, stiffness = 420f))
+                    }
+                    launch {
+                        dislikeTilt.animateTo(5f, spring(dampingRatio = 0.48f, stiffness = 480f))
+                        dislikeTilt.animateTo(0f, spring(dampingRatio = 0.62f, stiffness = 420f))
+                    }
+                } else {
+                    dislikeScale.animateTo(0.92f, spring(dampingRatio = 0.7f, stiffness = 520f))
+                    dislikeScale.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 520f))
+                    dislikeTilt.animateTo(0f, spring())
+                }
+            }
+            RailButton(enabled, "Dislike", onClick = shorts::toggleDislike) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Box(
+                        Modifier
+                            .size(34.dp)
+                            .graphicsLayer {
+                                scaleX = dislikeScale.value
+                                scaleY = dislikeScale.value
+                                rotationZ = dislikeTilt.value
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        FlourishIcon(
+                            if (disliked) SfIcons.ThumbDownFill else SfIcons.ThumbDown,
+                            null, active = disliked, kind = Flourish.Droop,
+                            tint = if (disliked) Color(0xFF3EA6FF) else Ink, size = 27.dp,
+                        )
+                    }
+                    if (dislikeCount != null) {
+                        Text("~${formatShortCount(dislikeCount)}", color = if (disliked) Color(0xFF3EA6FF) else Ink, fontSize = 10.sp, maxLines = 1)
+                    }
                 }
             }
         }
