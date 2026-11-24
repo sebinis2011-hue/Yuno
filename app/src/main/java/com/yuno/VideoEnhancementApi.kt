@@ -66,10 +66,9 @@ object VideoEnhancementApi {
             val fallback = fallbackThumbnail
                 ?.takeIf { it.startsWith("https://i.ytimg.com/") }
                 ?: "https://i.ytimg.com/vi/$videoId/hq720.jpg"
-            "$DEARROW_BASE/api/v1/getThumbnail".toHttpUrl().newBuilder()
+            "https://dearrow-thumb.ajay.app/api/v1/getThumbnail".toHttpUrl().newBuilder()
                 .addQueryParameter("videoID", videoId)
                 .addQueryParameter("time", timestamp.toString())
-                .addQueryParameter("redirectUrl", fallback)
                 .build()
                 .toString()
         }
