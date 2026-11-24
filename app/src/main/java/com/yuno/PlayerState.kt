@@ -530,7 +530,7 @@ class PlayerState(private val scope: CoroutineScope) {
                 val votes = runCatching { withContext(Dispatchers.IO) { VideoEnhancementApi.fetchVotes(item.id) } }
                     .onFailure { Log.w(TAG, "Return YouTube Dislike for ${item.id}", it) }
                     .getOrNull()
-                if (current?.id == item.id) communityDislikes = votes?.dislikes ?: -1L
+                if (current?.id == item.id && VideoEnhancements.returnYouTubeDislike) communityDislikes = votes?.dislikes ?: -1L
             }
         }
         if (VideoEnhancements.deArrow) {
@@ -538,7 +538,7 @@ class PlayerState(private val scope: CoroutineScope) {
                 val branding = runCatching {
                     withContext(Dispatchers.IO) { VideoEnhancementApi.fetchBranding(item.id, item.thumbnail) }
                 }.onFailure { Log.w(TAG, "DeArrow for ${item.id}", it) }.getOrNull() ?: return@launch
-                if (current?.id != item.id) return@launch
+                if (current?.id != item.id || !VideoEnhancements.deArrow) return@launch
                 val original = originalDetailsItem ?: item
                 val branded = original.copy(
                     title = branding.title ?: original.title,
@@ -583,6 +583,9 @@ class PlayerState(private val scope: CoroutineScope) {
                 else -> 0
             }
         }
+
+    /** Community-sourced dislike estimate; -1 means unavailable. */
+    val displayDislikes: Long get() = communityDislikes
 
     fun setLike(target: LikeStatus) {
         if (!Account.signedIn) { actionMessage = "Sign in to like videos."; return }
