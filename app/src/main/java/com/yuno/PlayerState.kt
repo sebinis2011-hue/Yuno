@@ -536,13 +536,14 @@ class PlayerState(private val scope: CoroutineScope) {
         if (VideoEnhancements.deArrow) {
             scope.launch {
                 val branding = runCatching {
-                    withContext(Dispatchers.IO) { VideoEnhancementApi.fetchBranding(item.id, item.thumbnail) }
+                    withContext(Dispatchers.IO) { VideoEnhancementApi.fetchBranding(item.id, item.thumbnail, item.durationSec, item.title) }
                 }.onFailure { Log.w(TAG, "DeArrow for ${item.id}", it) }.getOrNull() ?: return@launch
                 if (current?.id != item.id || !VideoEnhancements.deArrow) return@launch
                 val original = originalDetailsItem ?: item
                 val branded = original.copy(
                     title = branding.title ?: original.title,
-                    thumbnail = branding.thumbnailUrl ?: original.thumbnail,
+                    thumbnail = if (branding.useOriginalThumbnail) original.thumbnail
+                        else branding.thumbnailUrl ?: original.thumbnail,
                 )
                 current = branded
                 details = details?.takeIf { it.item.id == item.id }?.copy(item = branded)
