@@ -23,6 +23,16 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Replace and verify Gradle 8.11.1 Wrapper JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          wrapper="$RUNNER_TEMP/gradle-8.11.1-wrapper.jar"
+          curl --fail --location --silent --show-error \
+            https://services.gradle.org/distributions/gradle-8.11.1-wrapper.jar \
+            --output "$wrapper"
+          echo "2db75c40782f5e8ba1fc278a5574bab070adccb2d21ca5a6e5ed840888448046  $wrapper" | sha256sum --check -
+          install -m 0644 "$wrapper" gradle/wrapper/gradle-wrapper.jar
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
