@@ -855,7 +855,7 @@ private fun AccountActions(state: PlayerState) {
         ) { state.setLike(LikeStatus.Like) }
         ActionPill(
             icon = if (like == LikeStatus.Dislike) SfIcons.ThumbDownFill else SfIcons.ThumbDown,
-            label = null,
+            label = state.displayDislikes.takeIf { it > 0 }?.let { "~${formatCount(it)}" },
             active = like == LikeStatus.Dislike,
             flourish = Flourish.Droop,
             shape = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = 22.dp, bottomEnd = 22.dp),
