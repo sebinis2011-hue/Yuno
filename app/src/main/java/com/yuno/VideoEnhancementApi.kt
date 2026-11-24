@@ -63,9 +63,6 @@ object VideoEnhancementApi {
                 ?.takeIf { it.isFinite() && it >= 0.0 }
         }
         val thumbnail = thumbnailTime?.let { timestamp ->
-            val fallback = fallbackThumbnail
-                ?.takeIf { it.startsWith("https://i.ytimg.com/") }
-                ?: "https://i.ytimg.com/vi/$videoId/hq720.jpg"
             "https://dearrow-thumb.ajay.app/api/v1/getThumbnail".toHttpUrl().newBuilder()
                 .addQueryParameter("videoID", videoId)
                 .addQueryParameter("time", timestamp.toString())
