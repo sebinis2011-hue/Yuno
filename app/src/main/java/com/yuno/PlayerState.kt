@@ -717,6 +717,12 @@ class PlayerState(private val scope: CoroutineScope) {
         }
     }
 
+    /** Enable or disable infinite repetition of the currently playing video. */
+    fun setRepeatOne(on: Boolean) {
+        RepeatPlayback.set(on)
+        controller?.repeatMode = if (on) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+    }
+
     fun togglePlay() {
         val player = controller ?: return
         if (player.isPlaying) player.pause() else {
