@@ -30,6 +30,7 @@ class YunoApplication : Application(), ImageLoaderFactory {
         FullscreenZoom.init(this)
         SeekStep.init(this)
         RepeatPlayback.init(this)
+        VideoEnhancements.init(this)
         ChaptersStayOpen.init(this)
         AutoPip.init(this)
         CaptionSettings.init(this)
