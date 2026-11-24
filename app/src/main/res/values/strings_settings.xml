@@ -73,4 +73,6 @@
     <string name="settings_chapters_open_line">Picking a chapter leaves the list open, so you can go from one to the next</string>
     <string name="settings_auto_pip_title">Picture-in-picture when you leave</string>
     <string name="settings_auto_pip_line">Going home while a video plays keeps it playing in a small window</string>
+    <string name="settings_repeat_one_title">Repeat current video</string>
+    <string name="settings_repeat_one_line">Automatically restart this video when it ends, indefinitely</string>
 </resources>
