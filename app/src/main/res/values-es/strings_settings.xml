@@ -60,4 +60,9 @@
     <string name="settings_auto_pip_line">Si vas a la pantalla de inicio con un vídeo en marcha, sigue en una ventana pequeña</string>
     <string name="settings_repeat_one_title">Repetir el vídeo actual</string>
     <string name="settings_repeat_one_line">Reinicia automáticamente este vídeo al terminar, indefinidamente</string>
+    <string name="settings_ryd_title">Return YouTube Dislike</string>
+    <string name="settings_ryd_line">Mostrar los «no me gusta» estimados por la comunidad junto al botón</string>
+    <string name="settings_dearrow_title">Títulos y miniaturas de DeArrow</string>
+    <string name="settings_dearrow_line">Usar títulos y miniaturas fiables enviados por la comunidad en el reproductor</string>
+    <string name="settings_community_enhancements_credit">Los «no me gusta» son estimaciones de Return YouTube Dislike. Los títulos y miniaturas comunitarios proceden de DeArrow. Estos servicios reciben el ID público del vídeo; Yuno no envía los datos de tu cuenta.</string>
 </resources>
