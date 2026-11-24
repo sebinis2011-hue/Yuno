@@ -1339,7 +1339,7 @@ private fun ShortsRail(shorts: ShortsState, page: Int, enabled: Boolean, modifie
                     dislikeTilt.animateTo(0f, spring())
                 }
             }
-            RailButton(enabled, "Dislike", onClick = shorts::toggleDislike) {
+            RailButton(enabled, "Dislike", onClick = shorts::toggleDislike, width = 56.dp, height = 56.dp) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     Box(
                         Modifier
@@ -1358,7 +1358,16 @@ private fun ShortsRail(shorts: ShortsState, page: Int, enabled: Boolean, modifie
                         )
                     }
                     if (dislikeCount != null) {
-                        Text("~${formatShortCount(dislikeCount)}", color = if (disliked) Color(0xFF3EA6FF) else Ink, fontSize = 10.sp, maxLines = 1)
+                        Text(
+                            "~${formatShortCount(dislikeCount)}",
+                            modifier = Modifier.fillMaxWidth(),
+                            color = if (disliked) Color(0xFF3EA6FF) else Ink,
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
+                            maxLines = 1,
+                            softWrap = false,
+                            textAlign = TextAlign.Center,
+                        )
                     }
                 }
             }
@@ -1403,9 +1412,16 @@ private fun formatShortCount(value: Long): String = when {
 }
 
 @Composable
-private fun RailButton(enabled: Boolean, label: String, onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun RailButton(
+    enabled: Boolean,
+    label: String,
+    onClick: () -> Unit,
+    width: Dp = 48.dp,
+    height: Dp = 48.dp,
+    content: @Composable () -> Unit,
+) {
     Box(
-        Modifier.size(48.dp).pressable(enabled = enabled, onClick = onClick).semanticsLabel(label),
+        Modifier.width(width).height(height).pressable(enabled = enabled, onClick = onClick).semanticsLabel(label),
         contentAlignment = Alignment.Center,
     ) { content() }
 }
