@@ -553,13 +553,13 @@ class PlayerState(private val scope: CoroutineScope) {
     }
 
     fun setReturnYouTubeDislike(on: Boolean) {
-        VideoEnhancements.setReturnYouTubeDislike(on)
+        VideoEnhancements.updateReturnYouTubeDislike(on)
         communityDislikes = -1L
         current?.takeIf { on }?.let(::loadVideoEnhancements)
     }
 
     fun setDeArrow(on: Boolean) {
-        VideoEnhancements.setDeArrow(on)
+        VideoEnhancements.updateDeArrow(on)
         val item = current ?: return
         if (on) {
             loadVideoEnhancements(originalDetailsItem ?: item)
