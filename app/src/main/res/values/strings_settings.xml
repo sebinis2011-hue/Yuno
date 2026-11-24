@@ -75,4 +75,9 @@
     <string name="settings_auto_pip_line">Going home while a video plays keeps it playing in a small window</string>
     <string name="settings_repeat_one_title">Repeat current video</string>
     <string name="settings_repeat_one_line">Automatically restart this video when it ends, indefinitely</string>
+    <string name="settings_ryd_title">Return YouTube Dislike</string>
+    <string name="settings_ryd_line">Show community-estimated dislikes next to the dislike button</string>
+    <string name="settings_dearrow_title">DeArrow titles and thumbnails</string>
+    <string name="settings_dearrow_line">Use trusted community-submitted titles and video thumbnails in the player</string>
+    <string name="settings_community_enhancements_credit">Dislike counts are estimates from Return YouTube Dislike. Community titles and thumbnails are provided by DeArrow. These services receive the public video ID; Yuno does not send your account details.</string>
 </resources>
