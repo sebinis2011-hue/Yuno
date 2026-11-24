@@ -2,12 +2,24 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - feat/repeat-ryd-dearrow
   pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -15,9 +27,14 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
-      - name: Assemble debug and release
+      - name: Run JVM unit tests
+        run: ./gradlew testDebugUnitTest --console=plain
+      - name: Assemble debug and release APKs
         run: ./gradlew assembleDebug assembleRelease --console=plain
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: Yuno-apks
           path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 7
