@@ -245,12 +245,12 @@ object VideoEnhancements {
         deArrow = prefs?.getBoolean(KEY_DEARROW, true) != false
     }
 
-    fun setReturnYouTubeDislike(on: Boolean) {
+    fun updateReturnYouTubeDislike(on: Boolean) {
         returnYouTubeDislike = on
         prefs?.edit()?.putBoolean(KEY_RYD, on)?.apply()
     }
 
-    fun setDeArrow(on: Boolean) {
+    fun updateDeArrow(on: Boolean) {
         deArrow = on
         prefs?.edit()?.putBoolean(KEY_DEARROW, on)?.apply()
     }
