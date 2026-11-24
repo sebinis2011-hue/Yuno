@@ -48,7 +48,7 @@ object VideoEnhancementApi {
      * Mirrors DeArrow's fallback behavior: use a trusted community title/thumbnail when present;
      * otherwise de-clickbait all-caps titles and request a stable random video frame.
      */
-    fun fetchBranding(videoId: String, fallbackThumbnail: String?, fallbackDurationSec: Long): DeArrowBranding? {
+    fun fetchBranding(videoId: String, fallbackThumbnail: String?, fallbackDurationSec: Long, originalTitle: String): DeArrowBranding? {
         requireValidVideoId(videoId)
         brandingCache[videoId]?.takeIf { System.currentTimeMillis() - it.at < CACHE_MS }?.let { return it.value }
 
@@ -71,8 +71,8 @@ object VideoEnhancementApi {
                 ?.trim()
                 ?.takeIf { it.isNotBlank() }
         }
-        val originalTitle = fallbackTitle(json.optString("originalTitle", ""))
-        val title = selectedTitle ?: originalTitle.takeIf { it.isNotBlank() }
+        val formattedFallbackTitle = fallbackTitle(originalTitle)
+        val title = selectedTitle ?: formattedFallbackTitle.takeIf { it.isNotBlank() }
 
         val thumbnails = json.optJSONArray("thumbnails")
         val selectedThumbnail = thumbnails?.let { list ->
@@ -91,12 +91,12 @@ object VideoEnhancementApi {
         val duration = if (apiDuration.isFinite() && apiDuration > 0.0) apiDuration else fallbackDurationSec.toDouble()
         val apiRandomTime = json.optDouble("randomTime", Double.NaN)
         val randomFraction = if (apiRandomTime.isFinite() && apiRandomTime in 0.0..1.0) {
-            apiRandomTime
+            if (apiRandomTime > 0.9) apiRandomTime - 0.9 else apiRandomTime
         } else {
             // Stable across launches, matching DeArrow's deterministic random-time fallback.
             Random(videoId.hashCode().toLong()).nextDouble() * 0.9
         }
-        val randomTimestamp = if (duration > 0.0) (randomFraction * 0.9 * duration / 0.9) else null
+        val randomTimestamp = if (duration > 0.0) randomFraction * duration else null
         val thumbnailTime = when {
             useOriginal -> null
             submittedTime != null -> submittedTime
