@@ -285,6 +285,9 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
     // ── Account (signed in) ──
     val accountStates = mutableStateMapOf<String, VideoAccountState>()
     private val accountAsked = HashSet<String>()
+    /** RYD estimates are public and independent of the signed-in YouTube account. */
+    val communityDislikes = mutableStateMapOf<String, Long>()
+    private val dislikeAsked = HashSet<String>()
     private val watched = HashSet<String>()
     /** Short notes ("Sign in to like Shorts."), shown by the app shell. */
     var onMessage: (String) -> Unit = {}
@@ -550,6 +553,7 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         startLogged = false
         val p = assigned[index]
         val id = items.getOrNull(index)?.id
+        id?.let(::loadCommunityDislikes)
         readyWhenShown = when {
             p?.firstFrame == true -> if (p.banked) "first frame ready, banked" else "first frame ready"
             p?.prepared == true -> if (p.banked) "loading, banked" else "loading"
@@ -732,9 +736,16 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         val info = StreamCache.get(id)
         val tracks = info?.let { ShortsBank.tracks(it) }
         if (tracks == null) {
-            // Links expired (or the network changed) since they were fetched: fetch again.
-            if (info == null) details.remove(id) else failed[id] = "This Short can't play right now."
-            return false
+            if (info == null) {
+                // Details may outlive the extractor's in-memory stream cache; request fresh links.
+                details.remove(id)
+                return false
+            }
+            // Some Shorts expose stream variants that our local DASH bank cannot convert.
+            // Use the regular extractor-backed resolver rather than permanently failing the Short.
+            Log.w(TAG, "shorts: no bank-compatible tracks for $id; using standard stream resolver")
+            p.prepareDirect(why, item)
+            return true
         }
         p.prepare(why, ShortsBank.mediaSource(tracks.first, tracks.second, item), listOf(tracks.first.url, tracks.second.url), banked = false)
         return true
@@ -875,6 +886,20 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         }
     }
 
+    /** Fetch the community estimate once per short; cached by VideoEnhancementApi for 30 minutes. */
+    private fun loadCommunityDislikes(id: String) {
+        if (!VideoEnhancements.returnYouTubeDislike || !dislikeAsked.add(id)) return
+        scope.launch(Dispatchers.IO) {
+            runCatching { VideoEnhancementApi.fetchVotes(id)?.dislikes }
+                .onSuccess { count -> if (count != null && count >= 0L) communityDislikes[id] = count }
+                .onFailure {
+                    if (it is CancellationException) throw it
+                    Log.w(TAG, "shorts: Return YouTube Dislike for $id", it)
+                    dislikeAsked.remove(id)
+                }
+        }
+    }
+
     /** Watched Shorts join the account's history, as on YouTube (the start ping; no watch time). */
     private fun joinHistory(id: String) {
         if (!Account.signedIn || !watched.add(id)) return
@@ -883,12 +908,16 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         }
     }
 
-    fun toggleLike() {
+    fun toggleLike() = setShortsLike(LikeStatus.Like)
+
+    /** Apply the account's real YouTube dislike action from the Shorts rail. */
+    fun toggleDislike() = setShortsLike(LikeStatus.Dislike)
+
+    private fun setShortsLike(target: LikeStatus) {
         val id = current?.id ?: return
         if (!Account.signedIn) { onMessage(str(R.string.shorts_sign_in_to_like)); return }
-        // Not known yet (the answer is on its way): like it now, without waiting.
         val before = accountStates[id] ?: VideoAccountState(LikeStatus.None, subscribed = null, channelId = null)
-        val next = if (before.like == LikeStatus.Like) LikeStatus.None else LikeStatus.Like
+        val next = if (before.like == target) LikeStatus.None else target
         accountStates[id] = before.copy(like = next)
         scope.launch {
             runCatching { InnerTube.setLike(id, next) }
@@ -1126,6 +1155,17 @@ internal class ShortPlayer(context: Context, private val state: ShortsState) {
         exo.prepare()
     }
 
+    /** Use the same extractor-backed media source as the regular player when bank tracks are unavailable. */
+    fun prepareDirect(why: String, item: MediaItem) {
+        val v = id ?: return
+        Log.i("Yuno", "shorts: loading $v ($why, standard resolver)")
+        prepared = true
+        urls = emptyList()
+        banked = false
+        exo.setMediaItem(item)
+        exo.prepare()
+    }
+
     /** Once per short: start over on fresh links. */
     fun retry(): Boolean {
         if (retried) return false
@@ -1262,6 +1302,8 @@ private fun ShortsRail(shorts: ShortsState, page: Int, enabled: Boolean, modifie
     val details = shorts.details[item.id]
     val account = shorts.accountStates[item.id]
     val liked = account?.like == LikeStatus.Like
+    val disliked = account?.like == LikeStatus.Dislike
+    val dislikeCount = shorts.communityDislikes[item.id]?.takeIf { it > 0L }
     val subscribed = account?.subscribed == true
     Column(
         modifier,
@@ -1274,6 +1316,17 @@ private fun ShortsRail(shorts: ShortsState, page: Int, enabled: Boolean, modifie
                     if (liked) SfIcons.ThumbUpFill else SfIcons.ThumbUp,
                     null, active = liked, kind = Flourish.Pop, tint = Ink, size = 30.dp,
                 )
+            }
+        }
+        RailButton(enabled, "Dislike", onClick = shorts::toggleDislike) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                FlourishIcon(
+                    if (disliked) SfIcons.ThumbDownFill else SfIcons.ThumbDown,
+                    null, active = disliked, kind = Flourish.Droop, tint = Ink, size = 27.dp,
+                )
+                if (dislikeCount != null) {
+                    Text("~${formatShortCount(dislikeCount)}", color = Ink, fontSize = 10.sp, maxLines = 1)
+                }
             }
         }
         RailButton(enabled, "Comments", onClick = shorts::openComments) {
@@ -1306,6 +1359,13 @@ private fun ShortsRail(shorts: ShortsState, page: Int, enabled: Boolean, modifie
             }
         }
     }
+}
+
+private fun formatShortCount(value: Long): String = when {
+    value >= 1_000_000 -> String.format(java.util.Locale.ROOT, "%.1fM", value / 1_000_000.0).removeSuffix(".0M")
+    value >= 10_000 -> "${value / 1_000}K"
+    value >= 1_000 -> String.format(java.util.Locale.ROOT, "%.1fK", value / 1_000.0).removeSuffix(".0K")
+    else -> value.toString()
 }
 
 @Composable
