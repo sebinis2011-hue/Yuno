@@ -226,3 +226,32 @@ object RepeatPlayback {
         prefs?.edit()?.putBoolean(KEY, on)?.apply()
     }
 }
+
+
+/** User controls for optional third-party community metadata. */
+object VideoEnhancements {
+    private const val KEY_RYD = "enhancement_ryd"
+    private const val KEY_DEARROW = "enhancement_dearrow"
+    private var prefs: SharedPreferences? = null
+
+    var returnYouTubeDislike by mutableStateOf(true)
+        private set
+    var deArrow by mutableStateOf(true)
+        private set
+
+    fun init(context: Context) {
+        prefs = context.getSharedPreferences("playback", Context.MODE_PRIVATE)
+        returnYouTubeDislike = prefs?.getBoolean(KEY_RYD, true) != false
+        deArrow = prefs?.getBoolean(KEY_DEARROW, true) != false
+    }
+
+    fun setReturnYouTubeDislike(on: Boolean) {
+        returnYouTubeDislike = on
+        prefs?.edit()?.putBoolean(KEY_RYD, on)?.apply()
+    }
+
+    fun setDeArrow(on: Boolean) {
+        deArrow = on
+        prefs?.edit()?.putBoolean(KEY_DEARROW, on)?.apply()
+    }
+}
