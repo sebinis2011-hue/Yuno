@@ -238,6 +238,13 @@ private fun PlaybackBody(player: PlayerState, search: SettingsSearch) {
                 SeekStep.choices.indexOf(SeekStep.seconds).coerceAtLeast(0),
             ) { SeekStep.set(SeekStep.choices[it]) }
         }
+        val repeatTitle = stringResource(R.string.settings_repeat_one_title)
+        val repeatLine = stringResource(R.string.settings_repeat_one_line)
+        row(repeatTitle, repeatLine, "repeat", "loop") {
+            ToggleRow(Icons.Rounded.RepeatOne, repeatTitle, repeatLine, RepeatPlayback.enabled) {
+                player.setRepeatOne(it)
+            }
+        }
         val chaptersTitle = stringResource(R.string.settings_chapters_open_title)
         val chaptersLine = stringResource(R.string.settings_chapters_open_line)
         row(chaptersTitle, chaptersLine) {
