@@ -52,6 +52,9 @@
 - **Background audio** with a media notification.
 - **Queue** — long-press any video for Play next / Add to queue.
 - **Playback speed** (0.5×–3×, optional “remember for every video”) and **audio-only** mode.
+- **Repeat one** — optionally restart the current video indefinitely, including in background playback.
+- **Return YouTube Dislike** — show community-estimated dislikes beside the dislike control.
+- **DeArrow** — use trusted community-submitted titles and generated thumbnails in the player; both community enhancements can be disabled in Playback settings.
 - **SponsorBlock** — per category Skip / Ask / Show / Off, with audio-fade skips and Undo.
 
 #### Player bar
@@ -117,6 +120,8 @@ Key paths: `app/src/main/java/com/yuno/` (player, feeds, Shorts, service).
 - [NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor): YouTube data, GPL-3.0
 - [AndroidX Media3](https://github.com/androidx/media): playback
 - [SponsorBlock](https://sponsor.ajay.app): sponsor segments, CC BY-NC-SA 4.0 (planned)
+- [Return YouTube Dislike](https://returnyoutubedislike.com): community-estimated dislike counts (attributed; rate-limited API)
+- [DeArrow](https://dearrow.ajay.app): community-submitted video titles and thumbnails ([API documentation](https://wiki.sponsor.ajay.app/w/API_Docs/DeArrow))
 - [essopsp](https://github.com/essopsp): the idea of a Shorts tab ([#10](https://github.com/deciocrytek/Skipii/pull/10))
 - [@o0ir4](https://www.threads.com/@o0ir4): reported the layout on Arabic (right-to-left) phones (0.5.64)
 - [nsk-47](https://github.com/nsk-47): found the gap under Appearance on large font sizes ([#24](https://github.com/deciocrytek/Skipii/issues/24), 0.5.65); the fullscreen quality sheet covering the video ([#25](https://github.com/deciocrytek/Skipii/issues/25)) and wider thumbnails ([#27](https://github.com/deciocrytek/Skipii/issues/27)), 0.5.68
