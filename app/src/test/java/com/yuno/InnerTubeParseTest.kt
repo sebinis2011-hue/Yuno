@@ -146,6 +146,20 @@ class InnerTubeParseTest {
         assertNotNull("sequence continuation", page.next)
     }
 
+    /** Promoted feed entries carry the same reel endpoint as organic Shorts, plus adClientParams.isAd. */
+    @Test fun shortsSequenceDropsPromotedAds() {
+        val root = JSONObject(
+            """{"entries":[
+                {"command":{"reelWatchEndpoint":{"videoId":"6x4mqgyvCZ8"}}},
+                {"command":{"reelWatchEndpoint":{"videoId":"0fgRDkGLIkA","adClientParams":{"isAd":true}}}},
+                {"command":{"reelWatchEndpoint":{"videoId":"yLMNlEddt1E","adClientParams":{"isAd":false}}}}
+            ],"continuationEndpoint":{"continuationCommand":{"token":"next-page"}}}"""
+        )
+        val page = InnerTube.parseShorts(root)
+        assertEquals(listOf("6x4mqgyvCZ8", "yLMNlEddt1E"), page.videos.map { it.id })
+        assertEquals("continuation is retained", "next-page", page.next)
+    }
+
     /** The seed that worked in the 2026-10-28 probe: id, then params { 3 = 5 }, then 10 = 25. */
     @Test fun reelSequenceParams() {
         val bytes = java.util.Base64.getDecoder().decode(InnerTube.reelSequenceParams("m7fHuAcbD0A"))
