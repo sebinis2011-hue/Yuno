@@ -1018,9 +1018,17 @@ object InnerTube {
     /** Every short a response links to (Home's Shorts shelf, search results), in order. */
     private fun reelIds(root: JSONObject): List<String> {
         val ids = LinkedHashSet<String>()
-        root.walk { key, obj -> if (key == "reelWatchEndpoint") obj.optString("videoId").takeIf { it.length == 11 }?.let(ids::add) }
+        root.walk { key, obj ->
+            if (key == "reelWatchEndpoint" && !obj.isShortsAd()) {
+                obj.optString("videoId").takeIf { it.length == 11 }?.let(ids::add)
+            }
+        }
         return ids.toList()
     }
+
+    /** YouTube marks promoted Shorts on the reel endpoint itself (the same flag used by uBlock Origin). */
+    private fun JSONObject.isShortsAd(): Boolean =
+        optJSONObject("adClientParams")?.optBoolean("isAd", false) == true
 
     /**
      * The sequence's start, as youtube.com encodes it (the ReelSequence protobuf, per YouTube.js):
@@ -1042,6 +1050,8 @@ object InnerTube {
         val entries = root.optJSONArray("entries")
         for (i in 0 until (entries?.length() ?: 0)) {
             val reel = entries?.optJSONObject(i)?.optJSONObject("command")?.optJSONObject("reelWatchEndpoint") ?: continue
+            // Feed ads are ordinary reel entries, but carry adClientParams.isAd=true. Never enqueue them.
+            if (reel.isShortsAd()) continue
             val id = reel.optString("videoId").takeIf { it.length == 11 } ?: continue
             val frame = reel.optJSONObject("thumbnail")?.collectStrings("url")?.firstOrNull()
             videos.putIfAbsent(id, shortItem(id, frame))
