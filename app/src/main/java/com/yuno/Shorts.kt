@@ -286,8 +286,9 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
     val accountStates = mutableStateMapOf<String, VideoAccountState>()
     private val accountAsked = HashSet<String>()
     /** RYD estimates are public and independent of the signed-in YouTube account. */
+    val communityLikes = mutableStateMapOf<String, Long>()
     val communityDislikes = mutableStateMapOf<String, Long>()
-    private val dislikeAsked = HashSet<String>()
+    private val votesAsked = HashSet<String>()
     private val watched = HashSet<String>()
     /** Short notes ("Sign in to like Shorts."), shown by the app shell. */
     var onMessage: (String) -> Unit = {}
@@ -553,7 +554,7 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         startLogged = false
         val p = assigned[index]
         val id = items.getOrNull(index)?.id
-        id?.let(::loadCommunityDislikes)
+        id?.let(::loadCommunityVotes)
         readyWhenShown = when {
             p?.firstFrame == true -> if (p.banked) "first frame ready, banked" else "first frame ready"
             p?.prepared == true -> if (p.banked) "loading, banked" else "loading"
@@ -886,16 +887,19 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         }
     }
 
-    /** Fetch the community estimate once per short; cached by VideoEnhancementApi for 30 minutes. */
-    private fun loadCommunityDislikes(id: String) {
-        if (!VideoEnhancements.returnYouTubeDislike || !dislikeAsked.add(id)) return
+    /** Fetch both community vote estimates once per short; VideoEnhancementApi caches them for 30 minutes. */
+    private fun loadCommunityVotes(id: String) {
+        if (!VideoEnhancements.returnYouTubeDislike || !votesAsked.add(id)) return
         scope.launch(Dispatchers.IO) {
-            runCatching { VideoEnhancementApi.fetchVotes(id)?.dislikes }
-                .onSuccess { count -> if (count != null && count >= 0L) communityDislikes[id] = count }
+            runCatching { VideoEnhancementApi.fetchVotes(id) }
+                .onSuccess { votes ->
+                    votes?.likes?.takeIf { it >= 0L }?.let { communityLikes[id] = it }
+                    votes?.dislikes?.takeIf { it >= 0L }?.let { communityDislikes[id] = it }
+                }
                 .onFailure {
                     if (it is CancellationException) throw it
-                    Log.w(TAG, "shorts: Return YouTube Dislike for $id", it)
-                    dislikeAsked.remove(id)
+                    Log.w(TAG, "shorts: Return YouTube Dislike votes for $id", it)
+                    votesAsked.remove(id)
                 }
         }
     }
@@ -1303,6 +1307,9 @@ private fun ShortsRail(shorts: ShortsState, page: Int, enabled: Boolean, modifie
     val account = shorts.accountStates[item.id]
     val liked = account?.like == LikeStatus.Like
     val disliked = account?.like == LikeStatus.Dislike
+    val exactLikeCount = details?.likes?.takeIf { it >= 0L }
+    val estimatedLikeCount = if (exactLikeCount == null) shorts.communityLikes[item.id]?.takeIf { it >= 0L } else null
+    val likeCount = exactLikeCount ?: estimatedLikeCount
     val dislikeCount = shorts.communityDislikes[item.id]?.takeIf { it > 0L }
     val subscribed = account?.subscribed == true
     Column(
@@ -1310,12 +1317,26 @@ private fun ShortsRail(shorts: ShortsState, page: Int, enabled: Boolean, modifie
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        RailButton(enabled, "Like", onClick = shorts::toggleLike) {
-            key(item.id, account != null) {
-                FlourishIcon(
-                    if (liked) SfIcons.ThumbUpFill else SfIcons.ThumbUp,
-                    null, active = liked, kind = Flourish.Pop, tint = Ink, size = 30.dp,
-                )
+        RailButton(enabled, "Like", onClick = shorts::toggleLike, width = 56.dp, height = 56.dp) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                key(item.id, account != null) {
+                    FlourishIcon(
+                        if (liked) SfIcons.ThumbUpFill else SfIcons.ThumbUp,
+                        null, active = liked, kind = Flourish.Pop, tint = Ink, size = 30.dp,
+                    )
+                }
+                if (likeCount != null) {
+                    Text(
+                        (if (estimatedLikeCount != null) "~" else "") + formatShortCount(likeCount),
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Ink,
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
         key(item.id) {
