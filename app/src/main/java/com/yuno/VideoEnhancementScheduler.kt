@@ -70,6 +70,7 @@ internal object VideoEnhancementScheduler {
     private var sequence = 0L
     private var lastRequestAt = 0L
     private var lastRydRequestAt = 0L
+    private var rydBudgetBlockedUntil = 0L
 
     fun init(context: Context) {
         synchronized(lock) {
@@ -147,6 +148,11 @@ internal object VideoEnhancementScheduler {
             return refreshed.value
         }
 
+        if (key.startsWith(RYD_PREFIX) && synchronized(lock) {
+                rydBudgetBlockedUntil > SystemClock.elapsedRealtime()
+            }
+        ) return null
+
         val task = synchronized(lock) {
             pending[key]?.also { existing ->
                 if (priority.weight > existing.priority && queue.remove(existing)) {
@@ -185,7 +191,7 @@ internal object VideoEnhancementScheduler {
                     // Stop asking until the next UTC day; do not burn the provider's daily quota.
                     task.store(null)
                     synchronized(lock) {
-                        retryAfter[task.key] = SystemClock.elapsedRealtime() + millisUntilUtcReset()
+                        rydBudgetBlockedUntil = SystemClock.elapsedRealtime() + millisUntilUtcReset()
                         if (pending[task.key] === task) pending.remove(task.key)
                     }
                     task.result.complete(null)
