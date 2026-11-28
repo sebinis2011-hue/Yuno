@@ -569,7 +569,7 @@ class PlayerState(private val scope: CoroutineScope) {
         VideoEnhancements.updateDeArrow(on)
         val item = current ?: return
         if (on) {
-            loadDeArrow(originalDetailsItem ?: item)
+            details?.takeIf { it.item.id == item.id }?.item?.let(::loadDeArrow)
         } else {
             val original = originalDetailsItem ?: return
             current = original
