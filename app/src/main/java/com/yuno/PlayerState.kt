@@ -28,13 +28,11 @@ import androidx.media3.session.MediaController
 import kotlin.math.roundToInt
 import androidx.media3.session.SessionToken
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * The UI's view of playback. Holds the MediaController plus everything the player
