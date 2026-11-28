@@ -31,6 +31,7 @@ class YunoApplication : Application(), ImageLoaderFactory {
         SeekStep.init(this)
         RepeatPlayback.init(this)
         VideoEnhancements.init(this)
+        VideoEnhancementScheduler.init(this)
         ChaptersStayOpen.init(this)
         AutoPip.init(this)
         CaptionSettings.init(this)
