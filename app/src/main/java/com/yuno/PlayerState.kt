@@ -184,6 +184,9 @@ class PlayerState(private val scope: CoroutineScope) {
     var accountState by mutableStateOf<VideoAccountState?>(null)
         private set
     private var originalLike = LikeStatus.None
+    private var originalDetailsItem: VideoItem? = null
+    var communityDislikes by mutableLongStateOf(-1L)
+        private set
     var inWatchLater by mutableStateOf(false)
         private set
     /** A short message after an account action fails (shown briefly over the player). */
@@ -297,6 +300,9 @@ class PlayerState(private val scope: CoroutineScope) {
         Log.i("YunoTime", "open ${item.id}")
         if (startPlayback) Net.prewarmMediaConnection()
         current = item
+        originalDetailsItem = item
+        communityDislikes = -1L
+        loadCommunityVotes(item)
         details = null
         error = null
         botCheck = false
@@ -327,6 +333,8 @@ class PlayerState(private val scope: CoroutineScope) {
                 .onSuccess { d ->
                     Log.i("YunoTime", "details +${android.os.SystemClock.elapsedRealtime() - openedAt}ms")
                     details = d
+                    originalDetailsItem = d.item
+                    loadDeArrow(d.item)
                     captions.useTracks(d.captions)
                     // The player takes the video's shape before its first frame arrives.
                     if (!aspectFromFrames) d.aspect?.let { videoAspect = it }
@@ -513,6 +521,62 @@ class PlayerState(private val scope: CoroutineScope) {
         }
     }
 
+    /** RYD needs only the public video ID, so start it as soon as the item is opened. */
+    private fun loadCommunityVotes(item: VideoItem) {
+        if (!VideoEnhancements.returnYouTubeDislike) return
+        scope.launch {
+            val votes = runCatching {
+                VideoEnhancementScheduler.votes(item.id, EnhancementPriority.Playing)
+            }.onFailure { Log.w(TAG, "Return YouTube Dislike for ${item.id}", it) }.getOrNull()
+            if (current?.id == item.id && VideoEnhancements.returnYouTubeDislike) {
+                communityDislikes = votes?.dislikes ?: -1L
+            }
+        }
+    }
+
+    /** DeArrow waits for the resolved title, thumbnail and duration, but not for playback to finish loading. */
+    private fun loadDeArrow(item: VideoItem) {
+        if (!VideoEnhancements.deArrow) return
+        scope.launch {
+            val branding = runCatching {
+                VideoEnhancementScheduler.branding(
+                    item.id, item.thumbnail, item.durationSec, item.title, EnhancementPriority.Playing,
+                )
+            }.onFailure { Log.w(TAG, "DeArrow for ${item.id}", it) }.getOrNull() ?: return@launch
+            if (current?.id != item.id || !VideoEnhancements.deArrow) return@launch
+            val original = originalDetailsItem ?: item
+            val branded = original.copy(
+                title = branding.title ?: original.title,
+                thumbnail = if (branding.useOriginalThumbnail) original.thumbnail
+                    else branding.thumbnailUrl ?: original.thumbnail,
+            )
+            current = branded
+            details = details?.takeIf { it.item.id == item.id }?.copy(item = branded)
+            known[item.id] = branded
+            WatchHistory.record(branded)
+        }
+    }
+
+    fun setReturnYouTubeDislike(on: Boolean) {
+        VideoEnhancements.updateReturnYouTubeDislike(on)
+        communityDislikes = -1L
+        current?.takeIf { on }?.let(::loadCommunityVotes)
+    }
+
+    fun setDeArrow(on: Boolean) {
+        VideoEnhancements.updateDeArrow(on)
+        val item = current ?: return
+        if (on) {
+            details?.takeIf { it.item.id == item.id }?.item?.let(::loadDeArrow)
+        } else {
+            val original = originalDetailsItem ?: return
+            current = original
+            details = details?.takeIf { it.item.id == original.id }?.copy(item = original)
+            known[original.id] = original
+            WatchHistory.record(original)
+        }
+    }
+
     /** Like count adjusted for the user's own change since the video opened. */
     val displayLikes: Long
         get() {
@@ -524,6 +588,9 @@ class PlayerState(private val scope: CoroutineScope) {
                 else -> 0
             }
         }
+
+    /** Community-sourced dislike estimate; -1 means unavailable. */
+    val displayDislikes: Long get() = communityDislikes
 
     fun setLike(target: LikeStatus) {
         if (!Account.signedIn) { actionMessage = "Sign in to like videos."; return }
@@ -715,6 +782,12 @@ class PlayerState(private val scope: CoroutineScope) {
         } catch (_: android.content.ActivityNotFoundException) {
             actionMessage = str(R.string.settings_no_app)
         }
+    }
+
+    /** Enable or disable infinite repetition of the currently playing video. */
+    fun setRepeatOne(on: Boolean) {
+        RepeatPlayback.set(on)
+        controller?.repeatMode = if (on) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
     }
 
     fun togglePlay() {

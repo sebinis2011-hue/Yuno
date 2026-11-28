@@ -2,22 +2,50 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - feat/repeat-ryd-dearrow
   pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Replace and verify Gradle 8.11.1 Wrapper JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          wrapper="$RUNNER_TEMP/gradle-8.11.1-wrapper.jar"
+          curl --fail --location --silent --show-error \
+            https://raw.githubusercontent.com/gradle/gradle/v8.11.1/gradle/wrapper/gradle-wrapper.jar \
+            --output "$wrapper"
+          echo "2db75c40782f5e8ba1fc278a5574bab070adccb2d21ca5a6e5ed840888448046  $wrapper" | sha256sum --check -
+          install -m 0644 "$wrapper" gradle/wrapper/gradle-wrapper.jar
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
-      - name: Assemble debug and release
+      - name: Run JVM unit tests
+        run: ./gradlew testDebugUnitTest --console=plain
+      - name: Assemble debug and release APKs
         run: ./gradlew assembleDebug assembleRelease --console=plain
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: Yuno-apks
           path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 7

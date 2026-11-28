@@ -34,6 +34,9 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.SystemUpdateAlt
@@ -226,7 +229,7 @@ private fun AccountRow(search: SettingsSearch, onOpen: (SettingsPage) -> Unit) {
 @Composable
 private fun PlaybackBody(player: PlayerState, search: SettingsSearch) {
     val pipSupported = LocalPictureInPicture.current?.supported != false
-    SearchableSettingsGroup(search, header = stringResource(R.string.settings_playback)) {
+    SearchableSettingsGroup(search, header = stringResource(R.string.settings_playback), footer = stringResource(R.string.settings_community_enhancements_credit)) {
         val seekTitle = stringResource(R.string.settings_seek_step_title)
         val seekLine = stringResource(R.string.settings_seek_step_line)
         row(seekTitle, seekLine, "seconds", "double tap") {
@@ -237,6 +240,27 @@ private fun PlaybackBody(player: PlayerState, search: SettingsSearch) {
                 SeekStep.choices.map { stringResource(R.string.settings_seconds_short, it.toString()) },
                 SeekStep.choices.indexOf(SeekStep.seconds).coerceAtLeast(0),
             ) { SeekStep.set(SeekStep.choices[it]) }
+        }
+        val repeatTitle = stringResource(R.string.settings_repeat_one_title)
+        val repeatLine = stringResource(R.string.settings_repeat_one_line)
+        row(repeatTitle, repeatLine, "repeat", "loop") {
+            ToggleRow(Icons.Rounded.RepeatOne, repeatTitle, repeatLine, RepeatPlayback.enabled) {
+                player.setRepeatOne(it)
+            }
+        }
+        val rydTitle = stringResource(R.string.settings_ryd_title)
+        val rydLine = stringResource(R.string.settings_ryd_line)
+        row(rydTitle, rydLine, "return youtube dislike", "community votes") {
+            ToggleRow(Icons.Rounded.ThumbDown, rydTitle, rydLine, VideoEnhancements.returnYouTubeDislike) {
+                player.setReturnYouTubeDislike(it)
+            }
+        }
+        val deArrowTitle = stringResource(R.string.settings_dearrow_title)
+        val deArrowLine = stringResource(R.string.settings_dearrow_line)
+        row(deArrowTitle, deArrowLine, "community title", "thumbnail") {
+            ToggleRow(Icons.Rounded.Edit, deArrowTitle, deArrowLine, VideoEnhancements.deArrow) {
+                player.setDeArrow(it)
+            }
         }
         val chaptersTitle = stringResource(R.string.settings_chapters_open_title)
         val chaptersLine = stringResource(R.string.settings_chapters_open_line)

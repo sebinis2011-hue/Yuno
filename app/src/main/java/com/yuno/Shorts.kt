@@ -285,6 +285,12 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
     // ── Account (signed in) ──
     val accountStates = mutableStateMapOf<String, VideoAccountState>()
     private val accountAsked = HashSet<String>()
+    /** RYD estimates are public and independent of the signed-in YouTube account. */
+    val communityLikes = mutableStateMapOf<String, Long>()
+    val communityDislikes = mutableStateMapOf<String, Long>()
+    /** Per-Short cooldowns mirror the scheduler cache so the 150 ms playback tick never polls disk repeatedly. */
+    private val voteRetryAt = HashMap<String, Long>()
+    private val voteJobs = HashMap<String, Job>()
     private val watched = HashSet<String>()
     /** Short notes ("Sign in to like Shorts."), shown by the app shell. */
     var onMessage: (String) -> Unit = {}
@@ -550,6 +556,7 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         startLogged = false
         val p = assigned[index]
         val id = items.getOrNull(index)?.id
+        id?.let { loadCommunityVotes(it, EnhancementPriority.Visible) }
         readyWhenShown = when {
             p?.firstFrame == true -> if (p.banked) "first frame ready, banked" else "first frame ready"
             p?.prepared == true -> if (p.banked) "loading, banked" else "loading"
@@ -669,9 +676,15 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         // Links (streams and details), nearest first, a few at a time: this short, the next
         // ones, the one before.
         val curId = list[cur].id
+        list.getOrNull(cur + 1)?.id?.let { loadCommunityVotes(it, EnhancementPriority.Prefetch) }
         (listOf(cur) + (cur + 1..cur + LinksAhead) + (cur - 1)).forEach { i -> list.getOrNull(i)?.let { want(it.id) } }
 
         val now = assigned[cur]
+        // Promote the visible Short as soon as it starts playing; it outranks all speculative work.
+        loadCommunityVotes(
+            curId,
+            if (now?.exo?.isPlaying == true) EnhancementPriority.Playing else EnhancementPriority.Visible,
+        )
         if (now != null && !now.prepared) prepare(now, "on screen")
         now?.capMs = Long.MAX_VALUE
         pool.forEach { it.exo.playWhenReady = it === now && foreground && !userPaused && !covered && scrub == null }
@@ -732,9 +745,16 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         val info = StreamCache.get(id)
         val tracks = info?.let { ShortsBank.tracks(it) }
         if (tracks == null) {
-            // Links expired (or the network changed) since they were fetched: fetch again.
-            if (info == null) details.remove(id) else failed[id] = "This Short can't play right now."
-            return false
+            if (info == null) {
+                // Details may outlive the extractor's in-memory stream cache; request fresh links.
+                details.remove(id)
+                return false
+            }
+            // Some Shorts expose stream variants that our local DASH bank cannot convert.
+            // Use the regular extractor-backed resolver rather than permanently failing the Short.
+            Log.w(TAG, "shorts: no bank-compatible tracks for $id; using standard stream resolver")
+            p.prepareDirect(why, item)
+            return true
         }
         p.prepare(why, ShortsBank.mediaSource(tracks.first, tracks.second, item), listOf(tracks.first.url, tracks.second.url), banked = false)
         return true
@@ -875,6 +895,37 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         }
     }
 
+    /**
+     * RYD is prefetched for the next Short and promoted when it becomes visible. The scheduler
+     * merges both requests, so a swipe does not create a second network call.
+     */
+    private fun loadCommunityVotes(id: String, priority: EnhancementPriority) {
+        if (!VideoEnhancements.returnYouTubeDislike) return
+        val now = SystemClock.elapsedRealtime()
+        if (now < (voteRetryAt[id] ?: 0L)) return
+        if (voteJobs[id]?.isActive == true) {
+            VideoEnhancementScheduler.promoteVotes(id, priority)
+            return
+        }
+        voteJobs[id] = scope.launch {
+            try {
+                val votes = VideoEnhancementScheduler.votes(id, priority)
+                votes?.likes?.takeIf { it >= 0L }?.let { communityLikes[id] = it }
+                votes?.dislikes?.takeIf { it >= 0L }?.let { communityDislikes[id] = it }
+                // Match the durable cache lifetime: a miss is retried after five minutes, not forever.
+                val ttl = if (votes == null) VideoEnhancementScheduler.RYD_EMPTY_CACHE_TTL_MS
+                    else VideoEnhancementScheduler.RYD_CACHE_TTL_MS
+                voteRetryAt[id] = SystemClock.elapsedRealtime() + ttl
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                Log.w(TAG, "shorts: Return YouTube Dislike votes for $id", error)
+                voteRetryAt[id] = SystemClock.elapsedRealtime() + VideoEnhancementScheduler.RYD_FAILURE_RETRY_MS
+            } finally {
+                voteJobs.remove(id)
+            }
+        }
+    }
+
     /** Watched Shorts join the account's history, as on YouTube (the start ping; no watch time). */
     private fun joinHistory(id: String) {
         if (!Account.signedIn || !watched.add(id)) return
@@ -883,12 +934,16 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         }
     }
 
-    fun toggleLike() {
+    fun toggleLike() = setShortsLike(LikeStatus.Like)
+
+    /** Apply the account's real YouTube dislike action from the Shorts rail. */
+    fun toggleDislike() = setShortsLike(LikeStatus.Dislike)
+
+    private fun setShortsLike(target: LikeStatus) {
         val id = current?.id ?: return
         if (!Account.signedIn) { onMessage(str(R.string.shorts_sign_in_to_like)); return }
-        // Not known yet (the answer is on its way): like it now, without waiting.
         val before = accountStates[id] ?: VideoAccountState(LikeStatus.None, subscribed = null, channelId = null)
-        val next = if (before.like == LikeStatus.Like) LikeStatus.None else LikeStatus.Like
+        val next = if (before.like == target) LikeStatus.None else target
         accountStates[id] = before.copy(like = next)
         scope.launch {
             runCatching { InnerTube.setLike(id, next) }
@@ -1126,6 +1181,17 @@ internal class ShortPlayer(context: Context, private val state: ShortsState) {
         exo.prepare()
     }
 
+    /** Use the same extractor-backed media source as the regular player when bank tracks are unavailable. */
+    fun prepareDirect(why: String, item: MediaItem) {
+        val v = id ?: return
+        Log.i("Yuno", "shorts: loading $v ($why, standard resolver)")
+        prepared = true
+        urls = emptyList()
+        banked = false
+        exo.setMediaItem(item)
+        exo.prepare()
+    }
+
     /** Once per short: start over on fresh links. */
     fun retry(): Boolean {
         if (retried) return false
@@ -1262,18 +1328,92 @@ private fun ShortsRail(shorts: ShortsState, page: Int, enabled: Boolean, modifie
     val details = shorts.details[item.id]
     val account = shorts.accountStates[item.id]
     val liked = account?.like == LikeStatus.Like
+    val disliked = account?.like == LikeStatus.Dislike
+    val exactLikeCount = details?.likes?.takeIf { it >= 0L }
+    val communityVotesEnabled = VideoEnhancements.returnYouTubeDislike
+    val estimatedLikeCount = if (exactLikeCount == null && communityVotesEnabled) shorts.communityLikes[item.id]?.takeIf { it >= 0L } else null
+    val likeCount = exactLikeCount ?: estimatedLikeCount
+    val dislikeCount = if (communityVotesEnabled) shorts.communityDislikes[item.id]?.takeIf { it > 0L } else null
     val subscribed = account?.subscribed == true
     Column(
         modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        RailButton(enabled, "Like", onClick = shorts::toggleLike) {
-            key(item.id, account != null) {
-                FlourishIcon(
-                    if (liked) SfIcons.ThumbUpFill else SfIcons.ThumbUp,
-                    null, active = liked, kind = Flourish.Pop, tint = Ink, size = 30.dp,
-                )
+        RailButton(enabled, "Like", onClick = shorts::toggleLike, width = 56.dp, height = 56.dp) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                key(item.id, account != null) {
+                    FlourishIcon(
+                        if (liked) SfIcons.ThumbUpFill else SfIcons.ThumbUp,
+                        null, active = liked, kind = Flourish.Pop, tint = Ink, size = 30.dp,
+                    )
+                }
+                if (likeCount != null) {
+                    Text(
+                        (if (estimatedLikeCount != null) "~" else "") + formatShortCount(likeCount),
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Ink,
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+        key(item.id) {
+            val dislikeScale = remember { Animatable(1f) }
+            val dislikeTilt = remember { Animatable(0f) }
+            LaunchedEffect(disliked) {
+                if (disliked) {
+                    dislikeScale.snapTo(0.78f)
+                    dislikeTilt.snapTo(-12f)
+                    launch {
+                        dislikeScale.animateTo(1.16f, spring(dampingRatio = 0.42f, stiffness = 520f))
+                        dislikeScale.animateTo(1f, spring(dampingRatio = 0.58f, stiffness = 420f))
+                    }
+                    launch {
+                        dislikeTilt.animateTo(5f, spring(dampingRatio = 0.48f, stiffness = 480f))
+                        dislikeTilt.animateTo(0f, spring(dampingRatio = 0.62f, stiffness = 420f))
+                    }
+                } else {
+                    dislikeScale.animateTo(0.92f, spring(dampingRatio = 0.7f, stiffness = 520f))
+                    dislikeScale.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 520f))
+                    dislikeTilt.animateTo(0f, spring())
+                }
+            }
+            RailButton(enabled, "Dislike", onClick = shorts::toggleDislike, width = 56.dp, height = 56.dp) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Box(
+                        Modifier
+                            .size(34.dp)
+                            .graphicsLayer {
+                                scaleX = dislikeScale.value
+                                scaleY = dislikeScale.value
+                                rotationZ = dislikeTilt.value
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        FlourishIcon(
+                            if (disliked) SfIcons.ThumbDownFill else SfIcons.ThumbDown,
+                            null, active = disliked, kind = Flourish.Droop,
+                            tint = if (disliked) Color(0xFF3EA6FF) else Ink, size = 27.dp,
+                        )
+                    }
+                    if (dislikeCount != null) {
+                        Text(
+                            "~${formatShortCount(dislikeCount)}",
+                            modifier = Modifier.fillMaxWidth(),
+                            color = if (disliked) Color(0xFF3EA6FF) else Ink,
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
+                            maxLines = 1,
+                            softWrap = false,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
             }
         }
         RailButton(enabled, "Comments", onClick = shorts::openComments) {
@@ -1308,10 +1448,24 @@ private fun ShortsRail(shorts: ShortsState, page: Int, enabled: Boolean, modifie
     }
 }
 
+private fun formatShortCount(value: Long): String = when {
+    value >= 1_000_000 -> String.format(java.util.Locale.ROOT, "%.1fM", value / 1_000_000.0).removeSuffix(".0M")
+    value >= 10_000 -> "${value / 1_000}K"
+    value >= 1_000 -> String.format(java.util.Locale.ROOT, "%.1fK", value / 1_000.0).removeSuffix(".0K")
+    else -> value.toString()
+}
+
 @Composable
-private fun RailButton(enabled: Boolean, label: String, onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun RailButton(
+    enabled: Boolean,
+    label: String,
+    onClick: () -> Unit,
+    width: Dp = 48.dp,
+    height: Dp = 48.dp,
+    content: @Composable () -> Unit,
+) {
     Box(
-        Modifier.size(48.dp).pressable(enabled = enabled, onClick = onClick).semanticsLabel(label),
+        Modifier.width(width).height(height).pressable(enabled = enabled, onClick = onClick).semanticsLabel(label),
         contentAlignment = Alignment.Center,
     ) { content() }
 }

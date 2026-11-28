@@ -108,6 +108,8 @@ class PlaybackService : MediaSessionService() {
             .setSeekBackIncrementMs(SeekStep.ms)
             .setSeekForwardIncrementMs(SeekStep.ms)
             .build()
+        // Apply the persisted repeat mode in the service so it also works in background playback.
+        player.repeatMode = if (RepeatPlayback.enabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
         val openApp = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),

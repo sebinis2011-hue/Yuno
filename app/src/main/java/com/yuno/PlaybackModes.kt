@@ -204,3 +204,54 @@ object FullscreenZoom {
         prefs?.edit()?.putBoolean(KEY, on)?.apply()
     }
 }
+
+/**
+ * Repeat the current video indefinitely. This is a player repeat mode, not a queue loop:
+ * when enabled, Media3 repeats only the current media item and leaves the queue intact.
+ */
+object RepeatPlayback {
+    private const val KEY = "repeat_one"
+    private var prefs: SharedPreferences? = null
+
+    var enabled by mutableStateOf(false)
+        private set
+
+    fun init(context: Context) {
+        prefs = context.getSharedPreferences("playback", Context.MODE_PRIVATE)
+        enabled = prefs?.getBoolean(KEY, false) == true
+    }
+
+    fun set(on: Boolean) {
+        enabled = on
+        prefs?.edit()?.putBoolean(KEY, on)?.apply()
+    }
+}
+
+
+/** User controls for optional third-party community metadata. */
+object VideoEnhancements {
+    private const val KEY_RYD = "enhancement_ryd"
+    private const val KEY_DEARROW = "enhancement_dearrow"
+    private var prefs: SharedPreferences? = null
+
+    var returnYouTubeDislike by mutableStateOf(true)
+        private set
+    var deArrow by mutableStateOf(true)
+        private set
+
+    fun init(context: Context) {
+        prefs = context.getSharedPreferences("playback", Context.MODE_PRIVATE)
+        returnYouTubeDislike = prefs?.getBoolean(KEY_RYD, true) != false
+        deArrow = prefs?.getBoolean(KEY_DEARROW, true) != false
+    }
+
+    fun updateReturnYouTubeDislike(on: Boolean) {
+        returnYouTubeDislike = on
+        prefs?.edit()?.putBoolean(KEY_RYD, on)?.apply()
+    }
+
+    fun updateDeArrow(on: Boolean) {
+        deArrow = on
+        prefs?.edit()?.putBoolean(KEY_DEARROW, on)?.apply()
+    }
+}
