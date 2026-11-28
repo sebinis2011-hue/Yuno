@@ -675,11 +675,15 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         // Links (streams and details), nearest first, a few at a time: this short, the next
         // ones, the one before.
         val curId = list[cur].id
-        loadCommunityVotes(curId, EnhancementPriority.Visible)
         list.getOrNull(cur + 1)?.id?.let { loadCommunityVotes(it, EnhancementPriority.Prefetch) }
         (listOf(cur) + (cur + 1..cur + LinksAhead) + (cur - 1)).forEach { i -> list.getOrNull(i)?.let { want(it.id) } }
 
         val now = assigned[cur]
+        // Promote the visible Short as soon as it starts playing; it outranks all speculative work.
+        loadCommunityVotes(
+            curId,
+            if (now?.exo?.isPlaying == true) EnhancementPriority.Playing else EnhancementPriority.Visible,
+        )
         if (now != null && !now.prepared) prepare(now, "on screen")
         now?.capMs = Long.MAX_VALUE
         pool.forEach { it.exo.playWhenReady = it === now && foreground && !userPaused && !covered && scrub == null }
