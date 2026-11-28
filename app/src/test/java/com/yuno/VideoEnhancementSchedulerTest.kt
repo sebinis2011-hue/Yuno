@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VideoEnhancementSchedulerTest {
-    @Test fun rydResultsAreReusedForThirtyMinutes() {
+    @Test fun rydResultsAreReusedForTwentyFourHours() {
         val now = 10_000_000L
         assertTrue(
             VideoEnhancementScheduler.isCacheFresh(
@@ -21,6 +21,18 @@ class VideoEnhancementSchedulerTest {
                 ttl = VideoEnhancementScheduler.RYD_CACHE_TTL_MS,
             ),
         )
+    }
+
+    @Test fun rydRequestSpacingStaysBelowTheDocumentedPerMinuteLimit() {
+        assertTrue(VideoEnhancementScheduler.requestSpacingMs(isRyd = true) >= 600L)
+        assertTrue(VideoEnhancementScheduler.requestSpacingMs(isRyd = false) < 600L)
+    }
+
+    @Test fun rydDailyBudgetLeavesHeadroomBelowProviderLimit() {
+        assertTrue(VideoEnhancementScheduler.canUseRydBudget(8_999))
+        assertFalse(VideoEnhancementScheduler.canUseRydBudget(9_000))
+        assertFalse(VideoEnhancementScheduler.canUseRydBudget(10_000))
+        assertFalse(VideoEnhancementScheduler.canUseRydBudget(-1))
     }
 
     @Test fun deArrowResultsAreReusedForTwentyFourHours() {
