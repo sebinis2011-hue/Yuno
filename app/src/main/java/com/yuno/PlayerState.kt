@@ -304,6 +304,7 @@ class PlayerState(private val scope: CoroutineScope) {
         current = item
         originalDetailsItem = item
         communityDislikes = -1L
+        loadCommunityVotes(item)
         details = null
         error = null
         botCheck = false
@@ -335,7 +336,7 @@ class PlayerState(private val scope: CoroutineScope) {
                     Log.i("YunoTime", "details +${android.os.SystemClock.elapsedRealtime() - openedAt}ms")
                     details = d
                     originalDetailsItem = d.item
-                    loadVideoEnhancements(d.item)
+                    loadDeArrow(d.item)
                     captions.useTracks(d.captions)
                     // The player takes the video's shape before its first frame arrives.
                     if (!aspectFromFrames) d.aspect?.let { videoAspect = it }
@@ -522,48 +523,53 @@ class PlayerState(private val scope: CoroutineScope) {
         }
     }
 
-    /** Fetch optional community metadata without blocking the playback/details path. */
-    private fun loadVideoEnhancements(item: VideoItem) {
-        communityDislikes = -1L
-        if (VideoEnhancements.returnYouTubeDislike) {
-            scope.launch {
-                val votes = runCatching { withContext(Dispatchers.IO) { VideoEnhancementApi.fetchVotes(item.id) } }
-                    .onFailure { Log.w(TAG, "Return YouTube Dislike for ${item.id}", it) }
-                    .getOrNull()
-                if (current?.id == item.id && VideoEnhancements.returnYouTubeDislike) communityDislikes = votes?.dislikes ?: -1L
+    /** RYD needs only the public video ID, so start it as soon as the item is opened. */
+    private fun loadCommunityVotes(item: VideoItem) {
+        if (!VideoEnhancements.returnYouTubeDislike) return
+        scope.launch {
+            val votes = runCatching {
+                VideoEnhancementScheduler.votes(item.id, EnhancementPriority.Playing)
+            }.onFailure { Log.w(TAG, "Return YouTube Dislike for ${item.id}", it) }.getOrNull()
+            if (current?.id == item.id && VideoEnhancements.returnYouTubeDislike) {
+                communityDislikes = votes?.dislikes ?: -1L
             }
         }
-        if (VideoEnhancements.deArrow) {
-            scope.launch {
-                val branding = runCatching {
-                    withContext(Dispatchers.IO) { VideoEnhancementApi.fetchBranding(item.id, item.thumbnail, item.durationSec, item.title) }
-                }.onFailure { Log.w(TAG, "DeArrow for ${item.id}", it) }.getOrNull() ?: return@launch
-                if (current?.id != item.id || !VideoEnhancements.deArrow) return@launch
-                val original = originalDetailsItem ?: item
-                val branded = original.copy(
-                    title = branding.title ?: original.title,
-                    thumbnail = if (branding.useOriginalThumbnail) original.thumbnail
-                        else branding.thumbnailUrl ?: original.thumbnail,
+    }
+
+    /** DeArrow waits for the resolved title, thumbnail and duration, but not for playback to finish loading. */
+    private fun loadDeArrow(item: VideoItem) {
+        if (!VideoEnhancements.deArrow) return
+        scope.launch {
+            val branding = runCatching {
+                VideoEnhancementScheduler.branding(
+                    item.id, item.thumbnail, item.durationSec, item.title, EnhancementPriority.Playing,
                 )
-                current = branded
-                details = details?.takeIf { it.item.id == item.id }?.copy(item = branded)
-                known[item.id] = branded
-                WatchHistory.record(branded)
-            }
+            }.onFailure { Log.w(TAG, "DeArrow for ${item.id}", it) }.getOrNull() ?: return@launch
+            if (current?.id != item.id || !VideoEnhancements.deArrow) return@launch
+            val original = originalDetailsItem ?: item
+            val branded = original.copy(
+                title = branding.title ?: original.title,
+                thumbnail = if (branding.useOriginalThumbnail) original.thumbnail
+                    else branding.thumbnailUrl ?: original.thumbnail,
+            )
+            current = branded
+            details = details?.takeIf { it.item.id == item.id }?.copy(item = branded)
+            known[item.id] = branded
+            WatchHistory.record(branded)
         }
     }
 
     fun setReturnYouTubeDislike(on: Boolean) {
         VideoEnhancements.updateReturnYouTubeDislike(on)
         communityDislikes = -1L
-        current?.takeIf { on }?.let(::loadVideoEnhancements)
+        current?.takeIf { on }?.let(::loadCommunityVotes)
     }
 
     fun setDeArrow(on: Boolean) {
         VideoEnhancements.updateDeArrow(on)
         val item = current ?: return
         if (on) {
-            loadVideoEnhancements(originalDetailsItem ?: item)
+            loadDeArrow(originalDetailsItem ?: item)
         } else {
             val original = originalDetailsItem ?: return
             current = original
