@@ -288,7 +288,8 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
     /** RYD estimates are public and independent of the signed-in YouTube account. */
     val communityLikes = mutableStateMapOf<String, Long>()
     val communityDislikes = mutableStateMapOf<String, Long>()
-    private val votesLoaded = HashSet<String>()
+    /** Per-Short cooldowns mirror the scheduler cache so the 150 ms playback tick never polls disk repeatedly. */
+    private val voteRetryAt = HashMap<String, Long>()
     private val voteJobs = HashMap<String, Job>()
     private val watched = HashSet<String>()
     /** Short notes ("Sign in to like Shorts."), shown by the app shell. */
@@ -899,7 +900,9 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
      * merges both requests, so a swipe does not create a second network call.
      */
     private fun loadCommunityVotes(id: String, priority: EnhancementPriority) {
-        if (!VideoEnhancements.returnYouTubeDislike || id in votesLoaded) return
+        if (!VideoEnhancements.returnYouTubeDislike) return
+        val now = SystemClock.elapsedRealtime()
+        if (now < (voteRetryAt[id] ?: 0L)) return
         if (voteJobs[id]?.isActive == true) {
             VideoEnhancementScheduler.promoteVotes(id, priority)
             return
@@ -909,11 +912,14 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
                 val votes = VideoEnhancementScheduler.votes(id, priority)
                 votes?.likes?.takeIf { it >= 0L }?.let { communityLikes[id] = it }
                 votes?.dislikes?.takeIf { it >= 0L }?.let { communityDislikes[id] = it }
-                // A null response is also cached briefly by the scheduler, so do not ask on every tick.
-                votesLoaded.add(id)
+                // Match the durable cache lifetime: a miss is retried after five minutes, not forever.
+                val ttl = if (votes == null) VideoEnhancementScheduler.RYD_EMPTY_CACHE_TTL_MS
+                    else VideoEnhancementScheduler.RYD_CACHE_TTL_MS
+                voteRetryAt[id] = SystemClock.elapsedRealtime() + ttl
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 Log.w(TAG, "shorts: Return YouTube Dislike votes for $id", error)
+                voteRetryAt[id] = SystemClock.elapsedRealtime() + VideoEnhancementScheduler.RYD_FAILURE_RETRY_MS
             } finally {
                 voteJobs.remove(id)
             }
