@@ -288,7 +288,8 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
     /** RYD estimates are public and independent of the signed-in YouTube account. */
     val communityLikes = mutableStateMapOf<String, Long>()
     val communityDislikes = mutableStateMapOf<String, Long>()
-    private val votesAsked = HashSet<String>()
+    private val votesLoaded = HashSet<String>()
+    private val voteJobs = HashMap<String, Job>()
     private val watched = HashSet<String>()
     /** Short notes ("Sign in to like Shorts."), shown by the app shell. */
     var onMessage: (String) -> Unit = {}
@@ -554,7 +555,7 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         startLogged = false
         val p = assigned[index]
         val id = items.getOrNull(index)?.id
-        id?.let(::loadCommunityVotes)
+        id?.let { loadCommunityVotes(it, EnhancementPriority.Visible) }
         readyWhenShown = when {
             p?.firstFrame == true -> if (p.banked) "first frame ready, banked" else "first frame ready"
             p?.prepared == true -> if (p.banked) "loading, banked" else "loading"
@@ -674,6 +675,8 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         // Links (streams and details), nearest first, a few at a time: this short, the next
         // ones, the one before.
         val curId = list[cur].id
+        loadCommunityVotes(curId, EnhancementPriority.Visible)
+        list.getOrNull(cur + 1)?.id?.let { loadCommunityVotes(it, EnhancementPriority.Prefetch) }
         (listOf(cur) + (cur + 1..cur + LinksAhead) + (cur - 1)).forEach { i -> list.getOrNull(i)?.let { want(it.id) } }
 
         val now = assigned[cur]
@@ -887,20 +890,29 @@ class ShortsState(context: Context, private val scope: CoroutineScope) {
         }
     }
 
-    /** Fetch both community vote estimates once per short; VideoEnhancementApi caches them for 30 minutes. */
-    private fun loadCommunityVotes(id: String) {
-        if (!VideoEnhancements.returnYouTubeDislike || !votesAsked.add(id)) return
-        scope.launch(Dispatchers.IO) {
-            runCatching { VideoEnhancementApi.fetchVotes(id) }
-                .onSuccess { votes ->
-                    votes?.likes?.takeIf { it >= 0L }?.let { communityLikes[id] = it }
-                    votes?.dislikes?.takeIf { it >= 0L }?.let { communityDislikes[id] = it }
-                }
-                .onFailure {
-                    if (it is CancellationException) throw it
-                    Log.w(TAG, "shorts: Return YouTube Dislike votes for $id", it)
-                    votesAsked.remove(id)
-                }
+    /**
+     * RYD is prefetched for the next Short and promoted when it becomes visible. The scheduler
+     * merges both requests, so a swipe does not create a second network call.
+     */
+    private fun loadCommunityVotes(id: String, priority: EnhancementPriority) {
+        if (!VideoEnhancements.returnYouTubeDislike || id in votesLoaded) return
+        if (voteJobs[id]?.isActive == true) {
+            VideoEnhancementScheduler.promoteVotes(id, priority)
+            return
+        }
+        voteJobs[id] = scope.launch {
+            try {
+                val votes = VideoEnhancementScheduler.votes(id, priority)
+                votes?.likes?.takeIf { it >= 0L }?.let { communityLikes[id] = it }
+                votes?.dislikes?.takeIf { it >= 0L }?.let { communityDislikes[id] = it }
+                // A null response is also cached briefly by the scheduler, so do not ask on every tick.
+                votesLoaded.add(id)
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                Log.w(TAG, "shorts: Return YouTube Dislike votes for $id", error)
+            } finally {
+                voteJobs.remove(id)
+            }
         }
     }
 
