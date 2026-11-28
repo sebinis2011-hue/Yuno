@@ -1320,9 +1320,10 @@ private fun ShortsRail(shorts: ShortsState, page: Int, enabled: Boolean, modifie
     val liked = account?.like == LikeStatus.Like
     val disliked = account?.like == LikeStatus.Dislike
     val exactLikeCount = details?.likes?.takeIf { it >= 0L }
-    val estimatedLikeCount = if (exactLikeCount == null) shorts.communityLikes[item.id]?.takeIf { it >= 0L } else null
+    val communityVotesEnabled = VideoEnhancements.returnYouTubeDislike
+    val estimatedLikeCount = if (exactLikeCount == null && communityVotesEnabled) shorts.communityLikes[item.id]?.takeIf { it >= 0L } else null
     val likeCount = exactLikeCount ?: estimatedLikeCount
-    val dislikeCount = shorts.communityDislikes[item.id]?.takeIf { it > 0L }
+    val dislikeCount = if (communityVotesEnabled) shorts.communityDislikes[item.id]?.takeIf { it > 0L } else null
     val subscribed = account?.subscribed == true
     Column(
         modifier,
