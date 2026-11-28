@@ -26,7 +26,7 @@ internal enum class EnhancementPriority(val weight: Int) {
     Playing(2),
 }
 
-object VideoEnhancementScheduler {
+internal object VideoEnhancementScheduler {
     internal const val RYD_CACHE_TTL_MS = 30 * 60 * 1000L
     internal const val DEARROW_CACHE_TTL_MS = 24 * 60 * 60 * 1000L
     private const val EMPTY_CACHE_TTL_MS = 5 * 60 * 1000L
@@ -123,7 +123,10 @@ object VideoEnhancementScheduler {
         check(synchronized(lock) { workerStarted }) { "VideoEnhancementScheduler was not initialized" }
 
         val cached = withContext(Dispatchers.IO) { readCache() }
-        if (cached.hit) return cached.value
+        if (cached.hit) {
+            synchronized(lock) { priorityOverrides.remove(key) }
+            return cached.value
+        }
 
         // A failed request is retried after a short cooldown, not on every re-entry to a feed.
         val waitForRetry = synchronized(lock) {
@@ -132,7 +135,10 @@ object VideoEnhancementScheduler {
         if (waitForRetry > 0L) delay(waitForRetry)
 
         val refreshed = withContext(Dispatchers.IO) { readCache() }
-        if (refreshed.hit) return refreshed.value
+        if (refreshed.hit) {
+            synchronized(lock) { priorityOverrides.remove(key) }
+            return refreshed.value
+        }
 
         val task = synchronized(lock) {
             pending[key]?.also { existing ->
