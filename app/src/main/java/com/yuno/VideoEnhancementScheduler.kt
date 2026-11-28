@@ -30,8 +30,8 @@ internal object VideoEnhancementScheduler {
     // RYD's own database refreshes dislike data only every 2–3 days; keep a local result for a day.
     internal const val RYD_CACHE_TTL_MS = 24 * 60 * 60 * 1000L
     internal const val DEARROW_CACHE_TTL_MS = 24 * 60 * 60 * 1000L
-    private const val EMPTY_CACHE_TTL_MS = 5 * 60 * 1000L
-    private const val FAILURE_RETRY_MS = 45 * 1000L
+    internal const val RYD_EMPTY_CACHE_TTL_MS = 5 * 60 * 1000L
+    internal const val RYD_FAILURE_RETRY_MS = 45 * 1000L
     private const val MIN_REQUEST_SPACING_MS = 350L
     internal const val RYD_MIN_REQUEST_SPACING_MS = 750L
     internal const val RYD_MAX_DAILY_REQUESTS = 9_000
@@ -212,7 +212,7 @@ internal object VideoEnhancementScheduler {
             } catch (error: Exception) {
                 Log.w(TAG, "request failed: ${task.key}", error)
                 synchronized(lock) {
-                    retryAfter[task.key] = SystemClock.elapsedRealtime() + FAILURE_RETRY_MS
+                    retryAfter[task.key] = SystemClock.elapsedRealtime() + RYD_FAILURE_RETRY_MS
                     if (pending[task.key] === task) pending.remove(task.key)
                 }
                 task.result.completeExceptionally(error)
@@ -296,7 +296,7 @@ internal object VideoEnhancementScheduler {
             return null
         }
         val at = json.optLong("at", 0L)
-        val ttl = if (json.optBoolean("found", false)) successTtl else EMPTY_CACHE_TTL_MS
+        val ttl = if (json.optBoolean("found", false)) successTtl else RYD_EMPTY_CACHE_TTL_MS
         if (!isCacheFresh(at, System.currentTimeMillis(), ttl)) {
             preferences?.edit()?.remove(key)?.apply()
             return null
