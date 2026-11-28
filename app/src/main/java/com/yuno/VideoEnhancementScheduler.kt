@@ -27,11 +27,17 @@ internal enum class EnhancementPriority(val weight: Int) {
 }
 
 internal object VideoEnhancementScheduler {
-    internal const val RYD_CACHE_TTL_MS = 30 * 60 * 1000L
+    // RYD's own database refreshes dislike data only every 2–3 days; keep a local result for a day.
+    internal const val RYD_CACHE_TTL_MS = 24 * 60 * 60 * 1000L
     internal const val DEARROW_CACHE_TTL_MS = 24 * 60 * 60 * 1000L
     private const val EMPTY_CACHE_TTL_MS = 5 * 60 * 1000L
     private const val FAILURE_RETRY_MS = 45 * 1000L
     private const val MIN_REQUEST_SPACING_MS = 350L
+    internal const val RYD_MIN_REQUEST_SPACING_MS = 750L
+    internal const val RYD_MAX_DAILY_REQUESTS = 9_000
+    private const val UTC_DAY_MS = 24 * 60 * 60 * 1000L
+    private const val RYD_DAY_KEY = "ryd_request_day_utc"
+    private const val RYD_COUNT_KEY = "ryd_request_count"
     private const val MAX_CACHE_ENTRIES = 512
     private const val PREFS = "video_enhancement_cache"
     private const val RYD_PREFIX = "cache_ryd_"
@@ -63,6 +69,7 @@ internal object VideoEnhancementScheduler {
     private var workerStarted = false
     private var sequence = 0L
     private var lastRequestAt = 0L
+    private var lastRydRequestAt = 0L
 
     fun init(context: Context) {
         synchronized(lock) {
@@ -166,12 +173,27 @@ internal object VideoEnhancementScheduler {
         while (true) {
             val task = synchronized(lock) { queue.poll() } ?: return
             try {
+                val isRyd = task.key.startsWith(RYD_PREFIX)
+                val spacing = if (isRyd) RYD_MIN_REQUEST_SPACING_MS else MIN_REQUEST_SPACING_MS
+                val previousRequestAt = if (isRyd) lastRydRequestAt else lastRequestAt
                 val now = SystemClock.elapsedRealtime()
-                val wait = if (lastRequestAt == 0L) 0L
-                    else (MIN_REQUEST_SPACING_MS - (now - lastRequestAt)).coerceAtLeast(0L)
+                val wait = if (previousRequestAt == 0L) 0L
+                    else (spacing - (now - previousRequestAt)).coerceAtLeast(0L)
                 if (wait > 0L) delay(wait)
-                lastRequestAt = SystemClock.elapsedRealtime()
 
+                if (isRyd && !reserveRydRequest()) {
+                    // Stop asking until the next UTC day; do not burn the provider's daily quota.
+                    task.store(null)
+                    synchronized(lock) {
+                        retryAfter[task.key] = SystemClock.elapsedRealtime() + millisUntilUtcReset()
+                        if (pending[task.key] === task) pending.remove(task.key)
+                    }
+                    task.result.complete(null)
+                    continue
+                }
+
+                val requestedAt = SystemClock.elapsedRealtime()
+                if (isRyd) lastRydRequestAt = requestedAt else lastRequestAt = requestedAt
                 Log.d(TAG, "request ${task.key}")
                 val value = task.fetch()
                 task.store(value)
@@ -191,6 +213,30 @@ internal object VideoEnhancementScheduler {
             }
         }
     }
+
+    /** Persist a conservative daily budget below RYD's documented 10,000-request ceiling. */
+    private fun reserveRydRequest(): Boolean {
+        val prefs = preferences ?: return false
+        val utcDay = System.currentTimeMillis() / UTC_DAY_MS
+        val savedDay = prefs.getLong(RYD_DAY_KEY, -1L)
+        val count = if (savedDay == utcDay) prefs.getInt(RYD_COUNT_KEY, 0) else 0
+        if (!canUseRydBudget(count)) return false
+        return prefs.edit()
+            .putLong(RYD_DAY_KEY, utcDay)
+            .putInt(RYD_COUNT_KEY, count + 1)
+            .commit()
+    }
+
+    private fun millisUntilUtcReset(): Long {
+        val now = System.currentTimeMillis()
+        return UTC_DAY_MS - (now % UTC_DAY_MS)
+    }
+
+    internal fun canUseRydBudget(requestsToday: Int): Boolean =
+        requestsToday >= 0 && requestsToday < RYD_MAX_DAILY_REQUESTS
+
+    internal fun requestSpacingMs(isRyd: Boolean): Long =
+        if (isRyd) RYD_MIN_REQUEST_SPACING_MS else MIN_REQUEST_SPACING_MS
 
     private fun readVotes(videoId: String): CacheLookup<CommunityVotes> {
         val entry = readEntry(RYD_PREFIX + videoId, RYD_CACHE_TTL_MS) ?: return CacheLookup(false, null)
